@@ -27,7 +27,7 @@ import os
 import logging
 import unittest
 from decimal import Decimal
-from service.models import Product, Category, db
+from service.models import Product, Category, db, DataValidationError
 from service import app
 from tests.factories import ProductFactory
 
@@ -134,6 +134,12 @@ class TestProductModel(unittest.TestCase):
         self.assertEqual(updated_product.id, product.id)
         self.assertEqual(updated_product.description, product.description)
 
+    def test_update_a_product_without_id(self):
+        """It should Not Update a Product if id doesnt exist"""
+        product = ProductFactory()
+        product.id = None
+        self.assertRaises(DataValidationError, product.update)
+
     def test_delete_a_product(self):
         """It should Delete a Product"""
         product = ProductFactory()
@@ -215,3 +221,55 @@ class TestProductModel(unittest.TestCase):
         self.assertEqual(find_function.count(), count)
         for product in find_function:
             self.assertEqual(product.price, price)
+
+    def test_find_by_price_with_spaces(self):
+        """It should Find Products by Price even if price is provided as string"""
+        products = ProductFactory.create_batch(10)
+        for product in products:
+            product.create()
+        price = products[0].price
+        count = 0
+        for product in products:
+            if product.price == price:
+                count = count + 1
+        find_function = Product.find_by_price(str(price))
+        self.assertEqual(find_function.count(), count)
+        for product in find_function:
+            self.assertEqual(product.price, price)
+
+    def test_deserialize_wrong_boolean(self):
+        """It should raise an error if available attribute is not boolean"""
+        product = Product()
+        data_missing_key = {
+            "name": "Product",
+            "description": "Good product",
+            "price": "19.99",
+            "available": "True",
+            "category": "ELECTRONICS"
+        }
+        with self.assertRaises(DataValidationError):
+            product.deserialize(data_missing_key)
+
+    def test_deserialize_wrong_or_no_data(self):
+        """It should raise an error if no data or wrong data is provided"""
+        product = Product()
+        empty_data = None
+        with self.assertRaises(DataValidationError):
+            product.deserialize(empty_data)
+
+        wrong_data = "this is not a dictionary"
+        with self.assertRaises(DataValidationError):
+            product.deserialize(wrong_data)
+
+    def test_deserialize_invalid_attribute(self):
+        """It should raise an error if invalid attribute"""
+        product = Product()
+        data_invalid_category = {
+            "name": "Product 3",
+            "description": "Another product",
+            "price": "39.99",
+            "available": True,
+            "category": "UNKNOWN_CATEGORY"  # not a valid Category enum member
+        }
+        with self.assertRaises(DataValidationError):
+            product.deserialize(data_invalid_category)
